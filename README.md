@@ -113,44 +113,28 @@ cp .env.example .env
 Öffne `.env` mit einem Texteditor und setze diese Werte:
 
 ```env
-# ── Pflicht ──────────────────────────────────────────────
-
 # Name der WhatsApp-Gruppe (muss exakt stimmen)
-BOT_GROUP_NAME="Lab Paper Chat"
+BOT_GROUP_NAME=Lab Paper Chat
 
-# Pfad zum shared-disk-Ordner für .ris und .pdf Dateien
-# Linux: z.B. /mnt/labdata/PaperBot/outbox
-# Windows: z.B. \\\\SERVER\\LabData\\PaperBot\\outbox
-OUTBOX_DIR="/mnt/labdata/PaperBot/outbox"
+# Pfad zum shared-disk-Ordner
+# Linux:  /mnt/labdata/PaperBot/outbox
+# Windows: //SERVER/LabData/PaperBot/outbox
+# Windows: C:/Users/DeinName/PaperBot/outbox
+OUTBOX_DIR=//SERVER/LabData/PaperBot/outbox
 
-# ── Crossref (empfohlen) ─────────────────────────────────
+# Deine Email (für Crossref Rate-Limits)
+CROSSREF_MAIL=dein.name@uni.de
 
-# Deine Email – für Rate-Limits der API
-CROSSREF_MAIL="dein.name@uni.de"
+# Optional: EndNote PDF Auto Import Ordner
+PDF_AUTO_IMPORT_DIR=
 
-# ── Optional: PDF Auto Import für EndNote ────────────────
-
-# Wenn der Bot PDFs auch direkt in EndNotes Import-Ordner kopieren soll:
-# Linux: z.B. /mnt/labdata/PaperBot/pdf-import
-# Windows: z.B. \\\\SERVER\\LabData\\PaperBot\\pdf-import
-# Leer lassen = nicht nutzen
-PDF_AUTO_IMPORT_DIR="/mnt/labdata/PaperBot/pdf-import"
-
-# ── Optional: KI-Zusammenfassungen ──────────────────────
-
-# Ohne LLM: Bot postet den Abstract (reicht meistens)
-# Mit LLM: richtige Zusammenfassung (OpenAI, DeepSeek, ...)
-# LLM_API_KEY="sk-proj-..."
-# LLM_MODEL="gpt-4o-mini"
-# LLM_ENDPOINT="https://api.openai.com/v1/chat/completions"
+# Optional: KI-Zusammenfassungen
+# LLM_API_KEY=sk-proj-...
+# LLM_MODEL=gpt-4o-mini
+# LLM_ENDPOINT=https://api.openai.com/v1/chat/completions
 ```
 
-**Achtung bei Windows-Pfaden in .env:** Verdopple die Backslashes oder nutze normale Slashes:
-```
-OUTBOX_DIR="\\\\SERVER\\LabData\\PaperBot\\outbox"
-# oder
-OUTBOX_DIR="//SERVER/LabData/PaperBot/outbox"
-```
+**Pfade in .env:** Immer **forward slashes** (`/`) verwenden, auch auf Windows. Node.js kommt damit klar. Keine Anführungszeichen um die Werte (sonst frisst dotenv die Backslashes).
 
 ---
 
@@ -254,10 +238,12 @@ Wenn nicht: Frag euren IT-Admin ob der Rechner Zugriff auf die Freigabe hat.
 Öffne PowerShell **als Administrator** auf dem Windows-Rechner:
 
 ```powershell
-# Zum Bot-Ordner navigieren
 cd C:\Users\DeinName\lab-paper-bot
 
-# Watchdog starten (testweise)
+# Forward slashes gehen auch in PowerShell:
+.\scripts\endnote-watchdog.ps1 -WatchFolder "//SERVER/LabData/PaperBot/outbox"
+
+# Backslashes gehen natürlich auch:
 .\scripts\endnote-watchdog.ps1 -WatchFolder "\\SERVER\LabData\PaperBot\outbox"
 ```
 
@@ -266,8 +252,7 @@ Jetzt einen DOI in die WhatsApp-Gruppe posten. Der Bot antwortet, schreibt eine 
 ### 9d: Watchdog als Scheduled Task (automatischer Start)
 
 ```powershell
-# Einmalig als Administrator ausführen:
-$action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-ExecutionPolicy Bypass -File `"C:\Users\DeinName\lab-paper-bot\scripts\endnote-watchdog.ps1`" -WatchFolder `"\\SERVER\LabData\PaperBot\outbox`""
+$action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-ExecutionPolicy Bypass -File `"C:\Users\DeinName\lab-paper-bot\scripts\endnote-watchdog.ps1`" -WatchFolder `"//SERVER/LabData/PaperBot/outbox`""
 $trigger = New-ScheduledTaskTrigger -AtStartup
 Register-ScheduledTask -TaskName "LabPaperBot Watchdog" -Action $action -Trigger $trigger -RunLevel Highest
 ```

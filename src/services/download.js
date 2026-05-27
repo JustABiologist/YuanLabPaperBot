@@ -1,3 +1,4 @@
+import { join } from 'path';
 import { findPDFURL } from './crossref.js';
 import { downloadFile, copyTo } from '../utils/file.js';
 import { PDF_AUTO_IMPORT_DIR } from '../config.js';
@@ -16,7 +17,7 @@ export async function downloadPDF(doi, outboxDir) {
   }
 
   const safeDOI = doi.replace(/[\/\\:;]/g, '_').substring(0, 80);
-  const dest = `${outboxDir}/${safeDOI}.pdf`;
+  const dest = join(outboxDir, `${safeDOI}.pdf`);
 
   try {
     await downloadFile(pdfUrl, dest);

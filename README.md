@@ -1,174 +1,351 @@
 # Lab Paper Bot
 
-A standalone WhatsApp bot that monitors your lab group chat, detects DOI links, fetches paper metadata, generates RIS files for EndNote, and posts summaries back to the chat.
+WhatsApp Bot, der eure Lab-Gruppe auf DOI-Links überwacht, automatisch RIS-Dateien für EndNote erzeugt und eine Zusammenfassung in den Chat postet.
 
-No AI agent required. Runs on any machine with Node.js.
-
-## How It Works
+## Was passiert?
 
 ```
-[Lab member shares DOI in WhatsApp group]
-        │
-[Bot sees message → extracts DOI(s)]
-        │
-[Fetches metadata from Crossref]
-        │
-[Generates .ris file + downloads PDF]  ───→  [Shared folder / outbox/]
-        │                                        │
-[Posts summary back to WhatsApp]            [Windows EndNote watchdog
-        │                                     watches this folder]
-                                              │
-                                         [Opens .ris → EndNote imports]
-                                         [Copies .pdf → EndNote auto-import]
-                                              │
-                                         [EndNote sync → shared library]
+WhatsApp-Gruppe ─→ Bot ─→ Crossref (Metadaten holen)
+                    │
+                    ├──→ .ris Datei + PDF ─→ SHARED DISK (eure Lab-Festplatte)
+                    │                              │
+                    └──→ Zusammenfassung ─→ WhatsApp-Gruppe
+                                                   │
+                                    Windows-Rechner liest vom shared disk
+                                    PowerShell Watchdog öffnet .ris in EndNote
+                                    EndNote syncs in geteilte Bibliothek
+                                    → Alle im Labor haben das Paper
 ```
 
-## Requirements
+## Was du brauchst
 
-- **Bot host**: Any machine with Node.js >= 18 (Linux, macOS, Windows)
-- **Phone**: A prepaid SIM card in any old Android/iOS phone (10 EUR Aldi Talk, etc.) dedicated to this bot
-- **EndNote machine**: A Windows PC with EndNote Desktop installed (for the watchdog)
-- **Shared folder**: A folder both machines can access (OneDrive, network share, or the bot host itself)
+| Was | Wofür | Kosten |
+|---|---|---|
+| **Altes Android-Handy** | WhatsApp-Zugang für den Bot | 0 € (habt ihr rumliegen) |
+| **Prepaid-SIM** | Eigene Nummer für den Bot | ~10 € einmalig |
+| **Bot-Rechner** (Linux/Windows) | Läuft 24/7, Bot-Software drauf | vorhanden (Lab-Server?) |
+| **Shared Lab Disk** | .ris + .pdf liegen hier, beide Rechner lesen/schreiben | vorhanden |
+| **Windows-Rechner** | EndNote Desktop, PowerShell Watchdog | vorhanden |
 
-## Quick Start
+---
+
+# Setup – Schritt für Schritt
+
+## Schritt 1: Prepaid-SIM besorgen + Handy vorbereiten
+
+- Kauf eine Prepaid-SIM (Aldi Talk, Congstar, Lidl Connect – 10 € im Supermarkt)
+- Steck sie in das alte Handy
+- Lade WhatsApp runter
+- Registriere WhatsApp **mit der neuen Nummer**
+- Geh in die Android-Einstellungen → Akku → WhatsApp: "Akku-Optimierung deaktivieren"
+- Schließ das Handy ans Ladegerät an
+- **Das Handy muss permanent mit dem WLAN verbunden sein und WhatsApp geöffnet haben**
+
+> Das Handy ist die "Basisstation" für den Bot. Solange es online ist, bleibt der Bot verbunden. Fällt das WLAN aus, verliert der Bot nach ein paar Stunden die Session.
+
+---
+
+## Schritt 2: Ordner auf dem shared disk anlegen
+
+Legt auf eurer geteilten Lab-Festplatte einen Ordner an, z.B.:
+
+```
+\\SERVER\LabData\PaperBot\
+├── outbox\        ← Hier schreibt der Bot .ris + .pdf rein
+└── pdf-import\    ← Hier kopiert der Bot PDFs für EndNotes Auto Import
+```
+
+**Notier dir den Pfad.** Du brauchst ihn später:
+- Als `OUTBOX_DIR` in der Bot-Konfiguration
+- Als `-WatchFolder` für das PowerShell-Skript auf dem Windows-Rechner
+
+---
+
+## Schritt 3: Bot-Rechner vorbereiten (Node.js installieren)
+
+Der Bot läuft entweder auf einem Linux-Server (z.B. Lab-Server) oder auf einem Windows-Rechner.
+
+### Linux (empfohlen für 24/7 Betrieb)
 
 ```bash
-# Clone and install
-git clone <repo-url> lab-paper-bot
+# Node.js installieren
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Prüfen:
+node --version   # Soll >= 18 sein
+npm --version
+```
+
+### Windows
+
+1. Geh auf https://nodejs.org/
+2. Lade die LTS Version runter (mindestens 18.x)
+3. Installieren – einfach immer "Next"
+
+---
+
+## Schritt 4: Bot herunterladen
+
+Öffne ein Terminal (Bash auf Linux, Eingabeaufforderung auf Windows).
+
+```bash
+# In einen Ordner deiner Wahl
+cd C:\Users\DeinName   # oder
+cd ~
+
+# Bot holen
+git clone <REPO-URL> lab-paper-bot
 cd lab-paper-bot
+
+# Abhängigkeiten installieren
 npm install
+```
+
+---
+
+## Schritt 5: Bot konfigurieren
+
+```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
-```
-BOT_GROUP_NAME="Dein Lab Name Paper Chat"
-CROSSREF_MAIL="deine@email.de"
+Öffne `.env` mit einem Texteditor und setze diese Werte:
+
+```env
+# ── Pflicht ──────────────────────────────────────────────
+
+# Name der WhatsApp-Gruppe (muss exakt stimmen)
+BOT_GROUP_NAME="Lab Paper Chat"
+
+# Pfad zum shared-disk-Ordner für .ris und .pdf Dateien
+# Linux: z.B. /mnt/labdata/PaperBot/outbox
+# Windows: z.B. \\\\SERVER\\LabData\\PaperBot\\outbox
+OUTBOX_DIR="/mnt/labdata/PaperBot/outbox"
+
+# ── Crossref (empfohlen) ─────────────────────────────────
+
+# Deine Email – für Rate-Limits der API
+CROSSREF_MAIL="dein.name@uni.de"
+
+# ── Optional: PDF Auto Import für EndNote ────────────────
+
+# Wenn der Bot PDFs auch direkt in EndNotes Import-Ordner kopieren soll:
+# Linux: z.B. /mnt/labdata/PaperBot/pdf-import
+# Windows: z.B. \\\\SERVER\\LabData\\PaperBot\\pdf-import
+# Leer lassen = nicht nutzen
+PDF_AUTO_IMPORT_DIR="/mnt/labdata/PaperBot/pdf-import"
+
+# ── Optional: KI-Zusammenfassungen ──────────────────────
+
+# Ohne LLM: Bot postet den Abstract (reicht meistens)
+# Mit LLM: richtige Zusammenfassung (OpenAI, DeepSeek, ...)
+# LLM_API_KEY="sk-proj-..."
+# LLM_MODEL="gpt-4o-mini"
+# LLM_ENDPOINT="https://api.openai.com/v1/chat/completions"
 ```
 
+**Achtung bei Windows-Pfaden in .env:** Verdopple die Backslashes oder nutze normale Slashes:
+```
+OUTBOX_DIR="\\\\SERVER\\LabData\\PaperBot\\outbox"
+# oder
+OUTBOX_DIR="//SERVER/LabData/PaperBot/outbox"
+```
+
+---
+
+## Schritt 6: Bot starten + QR-Code scannen
+
 ```bash
-# Run it
 npm start
-
-# Scan the QR code with your lab phone → done
 ```
 
-## Infrastructure Setup
+Es erscheint ein QR-Code im Terminal.
 
-### 1. Phone
+1. Nimm das **alte Handy** (das mit der Prepaid-SIM)
+2. Öffne WhatsApp → drei Punkte → "Verknüpfte Geräte" → "Gerät verknüpfen"
+3. Scanne den QR-Code
 
-Grab a prepaid SIM (10 EUR), put it in an old phone. Install WhatsApp, register with that number. Keep the phone on WiFi + power. That's it -- it just needs to stay alive.
+Der Bot ist jetzt verbunden. Er reagiert auf Nachrichten in der Gruppe.
 
-### 2. Bot machine (Linux recommended)
+---
 
-The bot runs on any always-on machine (Raspberry Pi, lab server, old laptop).
+## Schritt 7: Bot dauerhaft laufen lassen
 
-**As a systemd service (Linux):**
+### Linux (systemd)
+
 ```bash
-# Edit the service file to point to your install path
+# Service-Datei anpassen
+nano config/lab-paper-bot.service
+```
+
+Ändere folgende Zeilen:
+```
+User=dein-linux-benutzername
+WorkingDirectory=/pfad/zu/lab-paper-bot
+ReadWritePaths=/pfad/zu/lab-paper-bot/data /mnt/labdata/PaperBot
+```
+
+Dann:
+```bash
 sudo cp config/lab-paper-bot.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now lab-paper-bot
+
+# Status prüfen:
+sudo systemctl status lab-paper-bot
 ```
 
-**As a PM2 process (any OS):**
-```bash
-npm install -g pm2
-npm run start:pm2
-pm2 save
-pm2 startup
+### Windows
+
+Erstelle `start.bat` im Bot-Ordner:
+
+```batch
+@echo off
+cd C:\Users\DeinName\lab-paper-bot
+:loop
+node src/index.js
+if %ERRORLEVEL% equ 42 (
+    timeout /t 2 /nobreak
+    goto loop
+)
+timeout /t 10 /nobreak
+goto loop
 ```
 
-### 3. EndNote Watchdog (Windows)
+Dann: `Windows + R` → `shell:startup` → `start.bat` da rein kopieren.
 
-On the Windows machine where EndNote Desktop runs:
+Stell sicher dass der Rechner nie in den Ruhemodus geht (Energieoptionen → "Nie").
 
-1. Set EndNote's PDF Auto Import folder: `Edit → Preferences → PDF Handling → Enable automatic importing`
-2. Open PowerShell as Administrator, run:
+---
+
+## Schritt 8: WhatsApp-Gruppe erstellen + Bot einladen
+
+1. Erstelle auf **deinem normalen Handy** eine Gruppe (z.B. "Lab Paper Chat")
+2. Füge die Bot-Nummer (die Prepaid-SIM) als Mitglied hinzu
+3. Stell sicher, dass `BOT_GROUP_NAME` in `.env` genau so heißt
+4. Poste einen DOI-Link in die Gruppe, z.B. `https://doi.org/10.1038/nature12373`
+5. Der Bot sollte innerhalb von Sekunden mit einer Zusammenfassung antworten
+
+---
+
+## Schritt 9: EndNote-Watchdog auf dem Windows-Rechner einrichten
+
+**Das PowerShell-Skript überwacht den shared-disk-Ordner und importiert neue .ris-Dateien in EndNote.**
+
+### 9a: Windows muss auf den shared disk zugreifen können
+
+Stell sicher, dass der Windows-Rechner den shared-disk-Ordner sehen kann:
+```
+\\SERVER\LabData\PaperBot\outbox\
+```
+
+Wenn nicht: Frag euren IT-Admin ob der Rechner Zugriff auf die Freigabe hat.
+
+### 9b: .ris-Datei-Verknüpfung mit EndNote prüfen
+
+- Kopier eine beliebige `.ris` Datei auf den Windows-Rechner
+- Doppelklick drauf
+- Wenn sich EndNote öffnet und die Referenz importiert: ✅ funktioniert
+- Wenn nicht: Rechtsklick → "Öffnen mit" → "Andere App auswählen" → EndNote → "Immer verwenden"
+
+### 9c: Watchdog testen
+
+Öffne PowerShell **als Administrator** auf dem Windows-Rechner:
+
 ```powershell
-# Edit the path first, then:
-powershell -ExecutionPolicy Bypass -File scripts\endnote-watchdog.ps1
+# Zum Bot-Ordner navigieren
+cd C:\Users\DeinName\lab-paper-bot
+
+# Watchdog starten (testweise)
+.\scripts\endnote-watchdog.ps1 -WatchFolder "\\SERVER\LabData\PaperBot\outbox"
 ```
 
-For permanent operation, create a Scheduled Task that runs on boot:
+Jetzt einen DOI in die WhatsApp-Gruppe posten. Der Bot antwortet, schreibt eine `.ris` Datei auf den shared disk, und der Watchdog öffnet sie in EndNote.
+
+### 9d: Watchdog als Scheduled Task (automatischer Start)
+
 ```powershell
-$action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-ExecutionPolicy Bypass -File `"C:\Users\...\lab-paper-bot\scripts\endnote-watchdog.ps1`""
+# Einmalig als Administrator ausführen:
+$action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-ExecutionPolicy Bypass -File `"C:\Users\DeinName\lab-paper-bot\scripts\endnote-watchdog.ps1`" -WatchFolder `"\\SERVER\LabData\PaperBot\outbox`""
 $trigger = New-ScheduledTaskTrigger -AtStartup
 Register-ScheduledTask -TaskName "LabPaperBot Watchdog" -Action $action -Trigger $trigger -RunLevel Highest
 ```
 
-## Session Persistence
+Der Watchdog startet jetzt automatisch wenn der Windows-Rechner hochfährt.
 
-- Session is saved to `data/sessions/` -- survives restarts
-- Phone must stay connected to WiFi. If phone disconnects, session can expire within hours
-- Typical session without phone disconnect: **2-14 days**
-- On disconnect/auth failure: bot auto-exits with code 42, systemd/PM2 restarts it
-- **First run**: scan QR code. After that: no QR needed until session expires
+---
 
-## Message Format
+## Schritt 10: EndNote Sync aktivieren (für alle im Labor)
 
-The bot detects DOIs anywhere in messages, including:
-- `doi.org/10.xxxx/xxxxx`
-- `dx.doi.org/10.xxxx/xxxxx`
-- Plain `10.xxxx/xxxxx` in text
-- Links to nature.com, science.org, PubMed, arXiv, etc. (if they contain DOIs)
+Damit alle Lab-Mitglieder die Papers sehen:
 
-## Optional: LLM Summaries
+1. Öffne EndNote auf dem Windows-Rechner
+2. Gehe zu `Edit → Preferences → Sync`
+3. Gib deine EndNote Online-Zugangsdaten ein
+4. Hake "Sync Automatically" an
+5. Gehe zu `File → Share...`
+6. Gib die Email-Adressen deiner Lab-Kollegen ein
+7. Wähle "Read & Write" (dann können alle selbst Tags/Notizen hinzufügen)
+8. Fertig – jedes Paper das der Bot importiert, ist sofort für alle da
 
-By default, the bot posts the paper's abstract as the summary. For better summaries:
+---
 
+## Optional: KI-Zusammenfassungen
+
+Standardmäßig postet der Bot den Abstract aus Crossref. Für bessere Zusammenfassungen:
+
+1. Hol dir einen API-Key von OpenAI (kostet ~1-2 € pro Monat bei dem Traffic)
+2. Setze in `.env`:
 ```env
-LLM_API_KEY="sk-..."
+LLM_API_KEY="sk-proj-..."
 LLM_MODEL="gpt-4o-mini"
 LLM_ENDPOINT="https://api.openai.com/v1/chat/completions"
 ```
 
-Works with any OpenAI-compatible API (OpenAI, DeepSeek, Together, etc.).
+Alternativ: DeepSeek (billiger), Together, oder jeder OpenAI-kompatible Anbieter.
 
-## Project Structure
+---
+
+## Session & QR-Code
+
+| Situation | Was passiert |
+|---|---|
+| Erster Start | QR-Code anzeigen, mit altem Handy scannen |
+| Bot stürzt ab | Startet automatisch neu, Session bleibt |
+| Rechner rebootet | Bot startet automatisch, Session bleibt |
+| Handy verliert WLAN | Session stirbt nach Stunden → QR neu scannen |
+| Session abgelaufen (>14 Tage) | Bot exitet mit Code 42, restartet, zeigt QR |
+| QR erscheint >3 Minuten nicht | Bot restartet und versucht es nochmal |
+
+---
+
+## Projektstruktur
 
 ```
 lab-paper-bot/
 ├── src/
-│   ├── index.js              # Entry point - WhatsApp client
-│   ├── config.js              # Config from .env
+│   ├── index.js              # WhatsApp-Client
+│   ├── config.js              # .env auslesen
 │   ├── handlers/
-│   │   └── message.js         # Message handler
+│   │   └── message.js         # DOI erkennen + verarbeiten
 │   ├── services/
 │   │   ├── crossref.js        # Crossref API
-│   │   ├── ris.js             # RIS file generator
-│   │   ├── summary.js         # Summary generator
-│   │   └── download.js        # PDF downloader
+│   │   ├── ris.js             # .ris Dateien bauen
+│   │   ├── summary.js         # Zusammenfassung (Abstract oder KI)
+│   │   └── download.js        # PDF runterladen
 │   └── utils/
-│       ├── doi.js             # DOI detection
-│       └── file.js            # File operations
+│       ├── doi.js             # DOI-Erkennung
+│       └── file.js            # Datei-Operationen
 ├── scripts/
-│   ├── setup.sh               # One-time setup
-│   ├── start.sh               # Start with auto-restart
-│   └── endnote-watchdog.ps1   # Windows EndNote importer
+│   ├── setup.sh               # Einmal-Setup
+│   ├── start.sh               # Start mit Auto-Restart
+│   └── endnote-watchdog.ps1   # Windows: shared disk → EndNote import
 ├── config/
-│   └── lab-paper-bot.service  # systemd unit
+│   └── lab-paper-bot.service  # systemd (Linux)
 ├── data/
-│   ├── outbox/                # RIS + PDF output (watch this)
-│   └── sessions/              # WhatsApp session data
+│   └── sessions/              # WhatsApp-Session
 ├── .env.example
 ├── package.json
 └── README.md
 ```
-
-## Troubleshooting
-
-**Bot doesn't see messages:**
-- Make sure the bot is in the group
-- Check `BOT_GROUP_NAME` in `.env`
-- Check logs for QR/auth issues
-
-**EndNote doesn't auto-import RIS:**
-- Double-click a `.ris` file manually -- if it doesn't open EndNote, fix the file association (Windows: Open with → EndNote, check "Always")
-- Make sure EndNote Desktop is not in the middle of a modal dialog
-
-**Session keeps dying quickly:**
-- Phone WiFi is unstable or phone goes to sleep (disable battery optimization for WhatsApp)
-- Phone internet connection is poor
-- Switch phone to a device that stays permanently on WiFi

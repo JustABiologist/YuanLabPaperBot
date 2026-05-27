@@ -1,0 +1,21 @@
+{
+  "name": "lab-paper-bot",
+  "version": "1.0.0",
+  "description": "WhatsApp bot that monitors lab group for DOI links, generates RIS files, and posts summaries. No AI agent needed.",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "start:pm2": "pm2 start src/index.js --name lab-paper-bot --max-restarts 10 --restart-delay 5000",
+    "qr": "node src/qr-cli.js"
+  },
+  "dependencies": {
+    "whatsapp-web.js": "^1.25.0",
+    "qrcode-terminal": "^0.12.0",
+    "dotenv": "^16.4.7",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,31 @@
+[Unit]
+Description=Lab Paper Bot - WhatsApp DOI watcher
+Documentation=https://github.com/YOUR_ORG/lab-paper-bot
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/path/to/lab-paper-bot
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# Auto-restart on 42 (session refresh)
+RestartForceExitStatus=42
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/path/to/lab-paper-bot/data
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

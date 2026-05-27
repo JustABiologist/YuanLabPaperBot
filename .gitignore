@@ -1,0 +1,9 @@
+node_modules/
+.env
+data/sessions/
+data/outbox/*.ris
+data/outbox/*.pdf
+*.log
+.wwebjs_auth/
+.puppeteer_cache/
+chrome/

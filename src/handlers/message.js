@@ -4,19 +4,24 @@ import { fetchByDOI } from '../services/crossref.js';
 import { generateRIS, risFilename } from '../services/ris.js';
 import { generateSummary } from '../services/summary.js';
 import { downloadPDF } from '../services/download.js';
-import { OUTBOX_DIR, PDF_AUTO_IMPORT_DIR } from '../config.js';
+import { BOT_GROUP_NAME, OUTBOX_DIR, PDF_AUTO_IMPORT_DIR } from '../config.js';
 
 /**
  * Handle an incoming WhatsApp message.
+ * Only processes messages from the configured lab group.
  * Detects DOIs, fetches metadata, generates RIS + summary, posts back.
  */
 export async function handleMessage(msg, client) {
-  const text = getMessageText(msg);
-
   // Skip our own messages
   if (msg.fromMe) return null;
 
   const chat = await msg.getChat();
+
+  // Only respond in the configured group (ignore private chats, other groups)
+  if (!chat.isGroup) return null;
+  if (BOT_GROUP_NAME && chat.name !== BOT_GROUP_NAME) return null;
+
+  const text = getMessageText(msg);
 
   // Quick check: does this look paper-related?
   if (!looksLikePaper(text)) return null;
@@ -35,7 +40,7 @@ export async function handleMessage(msg, client) {
       if (result) results.push(result);
     } catch (err) {
       console.error(`[Handle] Error processing ${doi}:`, err.message);
-      await chat.sendMessage(`⚠️ Konnte Paper nicht verarbeiten: ${doi}\nFehler: ${err.message}`);
+      await chat.sendMessage(`⚠️ Could not process paper: ${doi}\nError: ${err.message}`);
     }
   }
 
@@ -97,10 +102,10 @@ function formatWhatsAppMessage(paper, summary, pdfPath) {
     msg += `\n📝 *Summary:*\n${summary}\n`;
   }
 
-  msg += `\n✅ In die Bibliothek aufgenommen`;
+  msg += `\n✅ Added to library`;
 
   if (pdfPath) {
-    msg += ` 📎 PDF liegt bereit`;
+    msg += ` 📎 PDF available`;
   }
 
   return msg;

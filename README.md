@@ -113,20 +113,19 @@ cp .env.example .env
 Öffne `.env` mit einem Texteditor und setze diese Werte:
 
 ```env
-# Name der WhatsApp-Gruppe (muss exakt stimmen)
+# Name der WhatsApp-Gruppe
 BOT_GROUP_NAME=Lab Paper Chat
 
 # Pfad zum shared-disk-Ordner
-# Linux:  /mnt/labdata/PaperBot/outbox
-# Windows: //SERVER/LabData/PaperBot/outbox
-# Windows: C:/Users/DeinName/PaperBot/outbox
-OUTBOX_DIR=//SERVER/LabData/PaperBot/outbox
+# Windows: \\server\LabData\PaperBot\outbox
+# Linux:   /mnt/labdata/PaperBot/outbox
+OUTBOX_DIR=\\server\LabData\PaperBot\outbox
 
 # Deine Email (für Crossref Rate-Limits)
 CROSSREF_MAIL=dein.name@uni.de
 
-# Optional: EndNote PDF Auto Import Ordner
-PDF_AUTO_IMPORT_DIR=
+# Optional: EndNote PDF Auto Import
+PDF_AUTO_IMPORT_DIR=\\server\LabData\PaperBot\pdf-import
 
 # Optional: KI-Zusammenfassungen
 # LLM_API_KEY=sk-proj-...
@@ -134,7 +133,7 @@ PDF_AUTO_IMPORT_DIR=
 # LLM_ENDPOINT=https://api.openai.com/v1/chat/completions
 ```
 
-**Pfade in .env:** Immer **forward slashes** (`/`) verwenden, auch auf Windows. Node.js kommt damit klar. Keine Anführungszeichen um die Werte (sonst frisst dotenv die Backslashes).
+**Wichtig:** Keine doppelten Anführungszeichen um Pfade mit Backslashes. `dotenv` würde die Backslashes dann als Escape-Sequenzen fressen. Entweder ungequotet oder in einfachen Anführungszeichen (`'\\server\path'`).
 
 ---
 
